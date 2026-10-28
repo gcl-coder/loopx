@@ -1467,6 +1467,55 @@ def test_replay_cost_rejects_non_finite_or_non_numeric_minutes(invalid_minutes) 
         )
 
 
+@pytest.mark.parametrize(
+    "invalid_weight",
+    [True, False, float("nan"), float("inf"), float("-inf"), 10**400, 0, -1.0],
+)
+def test_observation_weight_rejects_non_finite_or_non_positive_values(invalid_weight) -> None:
+    """A NaN weight used to reach a proposal score and defeat every comparison."""
+
+    with pytest.raises(ValueError, match="weight must be a finite positive number"):
+        FailureReplayObservation(
+            1,
+            3,
+            10.0,
+            ReplayFidelity.SEMANTIC_EQUIVALENT,
+            weight=invalid_weight,
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_floor",
+    [True, float("nan"), float("inf"), float("-inf"), 10**400, -1.0],
+)
+def test_planner_rejects_a_score_floor_that_cannot_bound_a_score(invalid_floor) -> None:
+    """Every comparison against a NaN floor is false, so a NaN floor admits everything."""
+
+    with pytest.raises(
+        ValueError,
+        match="minimum_score_minutes must be a finite non-negative number",
+    ):
+        plan_adaptive_replay_points(
+            _planning_trace(),
+            (ReplayPositionCost(None, 0, ReplayFidelity.EXACT, 1.0, 0.0),),
+            (FailureReplayObservation(1, 3, 10.0, ReplayFidelity.EXACT, weight=1.0),),
+            minimum_score_minutes=invalid_floor,
+        )
+
+
+@pytest.mark.parametrize("invalid_limit", [True, float("nan"), float("inf"), 0, -1])
+def test_planner_rejects_a_proposal_limit_that_is_not_a_positive_integer(
+    invalid_limit,
+) -> None:
+    with pytest.raises(ValueError, match="max_proposals must be"):
+        plan_adaptive_replay_points(
+            _planning_trace(),
+            (ReplayPositionCost(None, 0, ReplayFidelity.EXACT, 1.0, 0.0),),
+            (FailureReplayObservation(1, 3, 10.0, ReplayFidelity.EXACT, weight=1.0),),
+            max_proposals=invalid_limit,
+        )
+
+
 def test_full_scope_composes_adaptive_children_risk_and_promotion() -> None:
     trace = TraceLog("trace-full-scope", "branch-main")
     prefix = TraceEvent(

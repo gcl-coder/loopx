@@ -10,18 +10,36 @@ from .replay_runtime import ReplayFidelity, fidelity_meets
 from .trace_runtime import TraceLog, require_nonempty_text
 
 
-def _nonnegative(value: float, field_name: str) -> float:
+def _finite_number(value: float, field_name: str, *, allow_zero: bool) -> float:
+    """Normalize a public numeric input without admitting NaN or overflow.
+
+    ``float("nan") < 0`` and ``float("nan") <= 0`` are both false, so a
+    comparison-only guard admits NaN; a NaN then makes every later floor
+    comparison false too, which turns a bound into a pass-through. Booleans are
+    refused because ``float(True)`` is silently ``1.0``, and integers too large
+    for a float are refused so the raw ``OverflowError`` does not escape
+    validation as a non-field-specific error.
+    """
+
+    requirement = "non-negative" if allow_zero else "positive"
+    message = f"{field_name} must be a finite {requirement} number"
     if isinstance(value, bool):
-        raise ValueError(f"{field_name} must be a finite non-negative number")
+        raise ValueError(message)
     try:
         normalized = float(value)
     except (OverflowError, TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{field_name} must be a finite non-negative number"
-        ) from exc
-    if not math.isfinite(normalized) or normalized < 0:
-        raise ValueError(f"{field_name} must be a finite non-negative number")
+        raise ValueError(message) from exc
+    if not math.isfinite(normalized) or normalized < 0 or (normalized == 0 and not allow_zero):
+        raise ValueError(message)
     return normalized
+
+
+def _nonnegative(value: float, field_name: str) -> float:
+    return _finite_number(value, field_name, allow_zero=True)
+
+
+def _positive(value: float, field_name: str) -> float:
+    return _finite_number(value, field_name, allow_zero=False)
 
 
 @dataclass(frozen=True)
@@ -94,10 +112,7 @@ class FailureReplayObservation:
         )
         if self.minimum_fidelity == ReplayFidelity.NON_REPLAYABLE:
             raise ValueError("failure observations require replayable fidelity")
-        normalized_weight = float(self.weight)
-        if normalized_weight <= 0:
-            raise ValueError("weight must be positive")
-        object.__setattr__(self, "weight", normalized_weight)
+        object.__setattr__(self, "weight", _positive(self.weight, "weight"))
 
 
 @dataclass(frozen=True)
@@ -167,9 +182,8 @@ def plan_adaptive_replay_points(
         for observation in normalized_observations
     ):
         raise TypeError("observations must contain FailureReplayObservation values")
-    if int(max_proposals) <= 0:
-        raise ValueError("max_proposals must be positive")
-    threshold = float(minimum_score_minutes)
+    proposal_limit = int(_positive(max_proposals, "max_proposals"))
+    threshold = _nonnegative(minimum_score_minutes, "minimum_score_minutes")
     for candidate in normalized_candidates:
         _validate_position(trace, candidate)
     for observation in normalized_observations:
@@ -226,4 +240,4 @@ def plan_adaptive_replay_points(
             proposal.after_event_id or "",
         )
     )
-    return tuple(proposals[: int(max_proposals)])
+    return tuple(proposals[:proposal_limit])
