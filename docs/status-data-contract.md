@@ -280,6 +280,15 @@ For spend accounting, status derives `spent_slots` from compact
 `quota_slot_spent` runtime events in the current quota window. The registry
 remains the policy source for compute share and window size, not the spend
 ledger.
+An indexed quota event whose artifact cannot be read back is a ledger
+integrity failure, not a spend of zero: status reports it through
+`quota.unreadable_event_count` (with `quota.unreadable_event_reasons` naming
+the cause), keeps the quota state at `blocked_health`, and blocks automatic
+agent turns until the artifact is readable again.
+The legacy `from loopx.quota import quota_slot_contribution` export stays an
+identity alias of `loopx.control_plane.quota.ledger_readback.quota_slot_contribution`;
+it reports the contribution of one readable event only, and it is not the
+surface that carries the unreadable count.
 `quota_slot_spent` is status-neutral accounting: it must remain visible in run
 history for quota audit, but status and attention queues should use the latest
 non-accounting run as the current work state.
@@ -2512,6 +2521,11 @@ The summary currently reports:
   clamped against the spend it names. A spend whose `quota_event` cannot be
   read contributes no slot, and a void that targets a spend outside the window
   does not reduce that window.
+- `unreadable_event_count_24h` / `unreadable_event_count_7d`: indexed quota
+  events (`quota_slot_spent` / `quota_slot_voided`) in that sample whose
+  artifact cannot be read back. The real slot count is unknown, so these
+  events are counted instead of being silently read as a zero spend, and the
+  quota projection fails closed while the count is non-zero.
 - `automation_run_count_24h` / `automation_run_count_7d`: quota spend events
   whose compact `quota_event.source` is `heartbeat`, `automation`, or `cron`.
   If the compact run index does not retain a source, `quota_slot_spent` is
