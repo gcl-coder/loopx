@@ -39,6 +39,16 @@ reader. The six source links retain the recorded Task address in both formats.
 The fixed synthetic prose qualifies transport and reading mechanics, not live
 editorial quality or the address's availability. No layout or editor changed.
 
+New portfolio and local-Session editorial requests share the same time and
+content requirements. A Task completed after the period end remains a later
+state observation; only timestamped evidence inside `[start, end)` supports
+period progress. Older history, later changes, unknown times and unavailable
+views remain distinct. The author is asked to retain concrete outcomes,
+quantified comparisons, counterevidence and the responsible owner's next
+action, while stating shared limitations once. These are authoring requirements,
+not a semantic validator or proof of model compliance. Existing frozen requests
+and reports retain their original requirements and bytes.
+
 The public browser fixture also keeps the original private outbound owner
 running through its periodic source-history check. Its shared synthetic
 provider returns the stored messages with source-bound pagination and time
@@ -1011,14 +1021,64 @@ The existing Goal capability configuration transaction accepts:
 Replace the example with the actual existing identities and requested time.
 Prepare through `/api/chat/goal-configuration/preview`, then apply the same
 body and its `expected_plan_revision` through
-`/api/chat/goal-configuration/apply`. The existing Goal settings JSON editor
-uses this transaction; read back the saved configuration and the managed
-Session's `scheduled_task` inspection. A stale preview or changed identity is
+`/api/chat/goal-configuration/apply`. Read back the saved configuration and the
+managed Session's `scheduled_task` inspection. A stale preview or changed identity is
 rejected. This is an explicit Goal override: a machine default cannot enroll
 another conversation. `session-task` is a calendar execution mode, not a report
 renderer preset; it does not invoke the progress-report source or editorial
 format. Task descriptions, scripts and validation argv cannot be supplied in
 this configuration.
+
+The current generic Goal editor does **not** register the `task` field. Its
+form drops that source from the draft, and its JSON editor rejects unregistered
+fields. It therefore cannot yet configure or edit this Task mode end to end;
+the HTTP contract above and the read-only source catalog are partial product
+delivery. Do not mistake a preconfigured fixture for a completed Task picker or
+natural-language journey. Missing, empty, non-object or command-bearing Task
+input is rejected as HTTP 400 before Session source inspection, without changing
+the subscription, creating a window or invoking work. It does not infer a source
+from an older configuration.
+
+当前通用 Goal 编辑器尚未登记 `task` 字段：表单会在草稿中丢失原来源，JSON 编辑器也
+拒绝未登记字段，因此完整任务配置界面仍未交付。上述 HTTP 合同和只读来源目录只是
+阶段能力，预配置的合成场景不代表已完成 Task 选择器或自然语言旅程。缺失、空值、
+非对象或夹带命令的 Task 输入在读取 Session 来源前即以 HTTP 400 拒绝，不改订阅、
+不创建窗口、不执行业务，也不从旧配置推断来源。
+
+For reproducible packaged checks, run the existing disposable browser fixture:
+
+```sh
+uv run --extra test python examples/personal-workspace-browser/steward_report_fixture.py \
+  --managed-calendar-task sqlite --output-dir /tmp/loopx-calendar-task-qa
+```
+
+Use `file` instead of `sqlite` for the other native backend. `ready.json` names
+the isolated HTTP URL, original Session, completed source and future disabled
+configuration. The model computes an independently validated synthetic sum;
+no real identity or private provider is attached. The `start-existing-owners`
+control starts the real idle wake owner. `stop-existing-wake` stops only that
+owner; removing it resumes the same stored state through a new wake-service
+instance. `observed.json` records artifact, completion, retained history and
+actual post-setup model calls. This qualifies neither live-model understanding,
+complete Chat-process restart nor production delivery.
+
+For a controller-restart check, stop that wake owner, await accepted work, then
+write a unique operation token to `restart-runtime` in the same output directory.
+The fixture closes the old controller and reconstructs the normal controller,
+Chat store and transport over the original physical state, keeping its HTTP URL.
+`restart-readback.json` verifies the original Session, actor and message history
+and that restarting itself added no model or delivery effect. The wake owner
+remains stopped until `stop-existing-wake` is removed. Reusing a token within
+that fixture lifetime does not restart again. Missing stop or pending original
+work writes `restart-rejected.json` and leaves the controller running; that
+token cannot apply later after the condition changes. This is an isolated controller
+restart inside the fixture process, not an OS-process or installed-service test.
+
+`test_same_calendar_task_lifecycle_retains_results_and_rejects_late_dispatch`
+joins settings changes, pause/cancel, restart, original result readback,
+withdrawn Agent registration, late dispatch and three distinct calendar windows
+in one File/SQLite journey. Paused and withdrawn stages must add no model call
+or reply; each admitted window must have exactly one original Core result.
 
 Callers can discover eligible references on demand with
 `GET /api/chat/sessions/<original-session-id>/native-turn?calendar_task_sources=true`.

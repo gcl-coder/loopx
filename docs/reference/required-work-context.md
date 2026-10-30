@@ -34,6 +34,11 @@ relations and authority revision without repeating the body. If no other
 canonical fields need a source record, `work_context.selected_todo_authority`
 carries the source and revision. When the view is bounded, the full canonical
 detail remains in `work_context.sources`.
+The ordinary CLI shares exact acceptance copies within one response. Existing
+references follow their complete inline owner when that projection relocates it,
+including an owner visited later. Different revisions, types, failures and
+sources stay distinct. This adds no source read or authority, admission or
+settlement change; saved captures retain their original contents.
 Registered Goal state uses the existing writer's strict generated-region
 ownership. When every recognized Todo region is explicitly marked, the source
 adapter delivers **all other text verbatim** in `work_context.sources`: Goal
@@ -438,6 +443,9 @@ capture and return a small file reference, not an eager first page. The response
 names the delta/full `path`, digest and reader `command`; `recovery` names the
 current complete file. A file delta additionally carries `baseline_reference`.
 `index_command` lists current fields and `select_command` batches exact pointers.
+Under a smaller explicit ceiling, these shortcut commands may be omitted;
+append `--list` or `--select <pointer>` to `recovery.command` instead. Both
+operations address the current complete capture, including during delta delivery.
 The reference stays below 7900 serialized bytes (or the explicit smaller output
 ceiling); if metadata cannot fit, recovery retains the current capture. Reader
 pages remain independently bounded. A complete raw tool log is not proof that
@@ -579,6 +587,9 @@ all-Goal adoption, actual solver costs or outcome benefit.
 
 普通 Heartbeat/quota 默认在 `agent_channel.work_context` 返回完整选定 Todo、
 启用的验收与当前 Agent 相关的 User Todo，附带来源和修订，不需要开启 TurnEnvelope。
+普通 CLI 在同一响应内共享完全相同的验收副本。已有引用跟随本次投影迁移的完整
+内联 owner，包括后访问的 owner；不同修订、类型、失败和来源分别保留。不增加来源
+读取，不改变权限、准入或结算；已存 capture 保留原始内容。
 Goal Markdown 复用原 writer 对生成区域的严格归属规则：所有已识别 Todo 区域均有
 显式标记时，`work_context.sources` 原样携带区域外的全部文字，保留目标、frontmatter、
 任意章节、注释、历史和末尾停止条件。`excluded_todo_regions` 保留每段的角色、行区间
@@ -724,7 +735,9 @@ SSH Goal 使用 `--runtime-profile codex_app_ssh_goal` 生成 context-config 和
 不内联第一页。`path`、摘要与 `command` 指向当前差分或全量；`recovery` 指向当前
 完整文件；文件差分另带 `baseline_reference`。`index_command` 展示当前字段目录，
 `select_command` 批量选读精确路径。引用输出不超过 7900 序列化字节或调用者显式更小
-的上限；元数据放不下时保留当前捕获恢复入口。读取页另受输出预算约束。
+的上限；较小预算下可省略这两个快捷命令，改在 `recovery.command` 后追加
+`--list` 或 `--select <pointer>`，差分投递时也直接读取当前完整捕获。
+元数据仍放不下时保留当前捕获恢复入口。读取页另受输出预算约束。
 原始工具日志完整，不证明宿主保留给模型的字节也完整。
 
 原生 `captured_file` 基线来自校验后的前一完整文件，可差分复用所有未变字段，包括
@@ -821,9 +834,28 @@ ordinary full reads retain their file-only path.
 
 `quota context-read --list` discovers immediate child pointers, JSON types,
 serialized value sizes and object/array counts without returning their bodies.
-Combine `--list` with `--select` to explore nested sections; omit the selectors
-for the root. Its `context_capture_index_v1` view shares the digest-bound
-pagination contract, but an index cursor cannot be used for a value selection.
+When pointers are known, skip discovery and batch the needed values with repeated
+`--select` in one call. When unknown, select the nearest known parent and add
+`--list --list-depth 2` to discover nested fields together. Depth defaults to one
+and accepts one through eight; select a deeper parent for further exploration.
+This bounds traversal depth, not the capture size or readable content. Prefer a
+focused subtree to recursively listing unrelated evidence. Omit selectors for the
+root. The generated capture guidance teaches this choice without making an index
+read mandatory or changing which requirements must be read before work.
+Normal capture replies, persistent native setup and post-compaction recovery
+carry the same selection advice. Recovery points directly to `--select`, so a
+known pointer does not require another index round trip. Batch within the combined
+output budget, avoid overlapping parent/child selections, and inspect a missing
+pointer's parent before retrying the rejected batch. These are caller guidelines;
+selection validation, required reads and authority checks remain unchanged.
+
+The `context_capture_index_v1` view shares the digest-bound pagination contract.
+An expanded index includes its `list_depth`; `next_command` preserves the depth,
+selectors and both hashes. Changing depth rejects the prior view's continuation.
+An index cursor cannot be used for a value selection. For a truncated or missing
+page, recover the affected range of the same capture with a sufficient output
+budget; keep the original Turn and effect identities rather than repeating
+admission. Indexing never claims that the listed bodies have been read.
 
 Selected/index EOF, including root selection, never proves full model retention.
 Native file comparison is independent of that claim. The model can inspect the
@@ -846,8 +878,20 @@ pointer 从原始摘要绑定的 capture 批量读取详情。提供已有 `--ca
 `--selection-sha256`。读取器校验两者，保留包括大整数在内的原 JSON 值，
 不准入、不结算、不查询实时 Goal。选择模式依赖已有 typed runtime；普通全量
 读取仍只走文件路径。`--list` 列出直接子字段的精确 pointer、类型、序列化字节数
-及对象/数组成员数，不返回正文。与 `--select` 组合可探索嵌套章节；省略路径从根开始。
-`context_capture_index_v1` 沿用双摘要分页，目录 cursor 不能用作正文选择 cursor。
+及对象/数组成员数，不返回正文。已知路径时跳过目录查询，一次重复 `--select` 批量
+读取所需字段；路径未知时选择最近的已知父节点，用 `--list --list-depth 2` 一次
+发现多层字段。深度默认为 1，可选 1–8；需要更深时选择新的父节点继续。这只限制
+单次遍历深度，不限制 capture 容量或可读正文。优先展开相关子树，省略路径才从根开始。
+生成的读取指引会提示上述选择，不把查目录变成前置步骤，也不改变工作前的必读要求。
+普通 capture 回复、原生持久配置与压缩后恢复携带同一份选择指引。恢复命令直接指向
+`--select`，已知路径无须多查一轮目录。按合计输出预算分批，避免同时选择父节点和
+子节点；路径缺失时先查其父节点，再重试被拒绝的批次。这些是调用建议，不改变
+选择校验、必读要求或权限检查。
+
+`context_capture_index_v1` 沿用双摘要分页；展开的目录包含 `list_depth`，
+`next_command` 保留深度、路径和两个摘要。更改深度会拒绝旧视图的续读，目录 cursor
+也不能用作正文 cursor。遇到输出截断或缺页，用足够的输出预算恢复同一 capture
+的受影响范围，保留原 Turn/操作身份，不重新准入。列出字段不表示读过其正文。
 包括根选择在内的目录/详情 EOF 不证明全量模型保留；原生文件比较与此独立。
 模型可直接查当前完整文件，也可查基线和差分，无须先通读。
 

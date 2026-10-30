@@ -1313,6 +1313,25 @@ fields; this does not introduce a new telemetry system or receipt gate.
 
 ### Budget Failure Decisions
 
+The thin heartbeat's 4,500-character presentation allowance did not cover the
+complete combination of a 320-character scope, all five runtime capability
+flags, Codex App transport and an explicit CLI route. The existing public CLI
+fixture with `/opt/loopx/qualified-tools/bin/loopx` emits 4,851 normalized body
+characters at `a36e01c32`; its instructions and command arguments are complete.
+Calibrate only this presentation allowance to 4,900, leaving 49 characters above
+that input. Retain the original over-budget observation and add the complete
+CLI combination plus an oversized-route negative case. Prompt text, capability
+flags, the visible Goal's 4,000-character host limit, existing JSON/body fixture
+ceilings, execution authority and frozen qualification results remain unchanged.
+This corrects diagnostic coverage; it is not an output reduction or a claim of
+model compliance, runtime recovery or lower cost.
+
+薄提示原 4,500 字符展示预算未覆盖完整能力与显式 CLI 路由的组合；同一公开夹具
+保留 320 字符 scope、五项能力和完整指令时为 4,851。仅将该展示预算校准为
+4,900，保留原超限记录，并加入完整组合及更长路由仍超限的反例。正文、参数、
+4,000 字符宿主硬边界、既有 JSON/正文夹具上限及执行权限不变；不据此声称节省
+输出、恢复运行或改善模型行为。
+
 The fixed visible-Goal host fixture's 3,200-character regression guard predates
 `1d5d2d0f6`, which adds the known Todo choice to the first current guard. On the
 same four host inputs at `b201da8ba`, substituting only the pre-change dispatch
@@ -1527,6 +1546,18 @@ failure; the installed-profile smoke and semantic assertions qualify the repair.
 | Hard external or authorized limit / 外部或授权硬上限 | Respect the transport, storage, resource or owner constraint; a test edit cannot raise it. / 遵守传输、存储、资源或 owner 约束，改测试不能扩容。 |
 | Regression budget / 回归预算 | A measured guard against unexplained growth; preserving, reducing or increasing it needs consumer and cost evidence. / 用测量防止无解释增长；保持、压缩或扩容都依据消费者价值与成本。 |
 | Presentation cap / 展示上限 | Bound returned detail, not source truth; preserve selection, totals, completeness and drill-down. / 限制返回细节而非源事实；保留选择、总数、完整性与下钻路径。 |
+
+Heartbeat's authored-text regression metric normalizes the selected runtime,
+registry and active-state paths before their goal-id or parent-path substrings,
+including their shell-quoted spellings. Undeclared paths still count. Keep the
+raw body `char_count`, emitted JSON/Markdown budgets and native Goal host's
+4,000-character transport check independent: normalized metadata is not a
+transport saving or permission to exceed a host limit.
+
+Heartbeat 的正文回归计量先归一化已选择的 runtime、registry 和 active-state
+完整路径及其 shell 引用形式，再处理 Goal id、父路径等子串；未声明路径仍计入。
+原始正文 `char_count`、JSON/Markdown 输出预算与原生 Goal 宿主的 4,000 字符
+传输检查各自保留。归一化元数据不代表传输节省，也不豁免宿主限制。
 
 1. **Measure the same contract.** Record base/head revisions, workload, metric
    and measurement boundary. Compact JSON characters, UTF-8 bytes, nested keys,
