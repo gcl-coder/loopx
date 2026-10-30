@@ -285,6 +285,11 @@ integrity failure, not a spend of zero: status reports it through
 `quota.unreadable_event_count` (with `quota.unreadable_event_reasons` naming
 the cause), keeps the quota state at `blocked_health`, and blocks automatic
 agent turns until the artifact is readable again.
+An indexed quota event that reads back but does not name a known event type,
+or that names a known type without the fields that type requires, is the same
+integrity failure: the reason is `event_invalid`, and the event is never read
+as a zero spend. A readable event that names a known type and spends zero
+slots is a legal zero contribution, not an unreadable one.
 The legacy `from loopx.quota import quota_slot_contribution` export stays an
 identity alias of `loopx.control_plane.quota.ledger_readback.quota_slot_contribution`;
 it reports the contribution of one readable event only, and it is not the

@@ -26,6 +26,21 @@ QUOTA_EVENT_UNREADABLE_ARTIFACT_NOT_OBJECT = "artifact_not_object"
 QUOTA_EVENT_UNREADABLE_EVENT_MISSING = "event_missing"
 QUOTA_EVENT_UNREADABLE_EVENT_INVALID = "event_invalid"
 
+# The closed vocabulary of unreadable reasons. The public quota projection
+# only reports a reason from this set, so an unreadable event cannot smuggle
+# free-form text into the status surface.
+QUOTA_EVENT_UNREADABLE_REASONS = frozenset(
+    {
+        QUOTA_EVENT_UNREADABLE_MISSING_SOURCE,
+        QUOTA_EVENT_UNREADABLE_ARTIFACT_MISSING,
+        QUOTA_EVENT_UNREADABLE_ARTIFACT_UNREADABLE,
+        QUOTA_EVENT_UNREADABLE_ARTIFACT_INVALID_JSON,
+        QUOTA_EVENT_UNREADABLE_ARTIFACT_NOT_OBJECT,
+        QUOTA_EVENT_UNREADABLE_EVENT_MISSING,
+        QUOTA_EVENT_UNREADABLE_EVENT_INVALID,
+    }
+)
+
 
 def _int_number(value: Any, *, default: int) -> int:
     if isinstance(value, bool):
@@ -150,21 +165,32 @@ def quota_slot_observation(
         return None, reason
     if not event:
         return None, None
-    slots = max(0, _int_number(event.get("slots"), default=0))
-    if slots <= 0:
-        return None, None
     event_type = str(event.get("event_type") or "")
     if event_type == QUOTA_SLOT_SPENT_CLASSIFICATION:
         run_key = str(event.get("run_generated_at") or run.get("generated_at") or "")
         if not run_key:
             return None, QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+        slots = max(0, _int_number(event.get("slots"), default=0))
+        if slots <= 0:
+            # A readable spend event that spends no slot is a legal zero
+            # contribution, not an unreadable one.
+            return None, None
         return ("spent", run_key, slots), None
     if event_type == QUOTA_SLOT_VOIDED_CLASSIFICATION:
         voided_run_generated_at = str(event.get("voided_run_generated_at") or "")
         if not voided_run_generated_at:
             return None, QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+        slots = max(0, _int_number(event.get("slots"), default=0))
+        if slots <= 0:
+            # A readable void event that cancels no slot is a legal zero
+            # contribution, not an unreadable one.
+            return None, None
         return ("voided", voided_run_generated_at, slots), None
-    return None, None
+    # The index row claims a quota event, but the event does not name a type
+    # this ledger understands. Reading it as "this event spends nothing" would
+    # hand the Goal back the quota it already used, so the malformed event is
+    # reported as unreadable instead.
+    return None, QUOTA_EVENT_UNREADABLE_EVENT_INVALID
 
 
 def net_quota_slot_spend(

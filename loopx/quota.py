@@ -62,6 +62,7 @@ from .control_plane.quota.settlement import (
     settlement_result_payload,
 )
 from .control_plane.quota.ledger_readback import (
+    QUOTA_EVENT_UNREADABLE_REASONS,
     QUOTA_SLOT_SPENT_CLASSIFICATION,
     QUOTA_SLOT_VOIDED_CLASSIFICATION,
     net_quota_slot_spend,
@@ -375,6 +376,13 @@ def goal_quota_config(goal: dict[str, Any] | None) -> dict[str, Any]:
     unreadable_event_count = _int_number(raw.get("unreadable_event_count"), default=0)
     if unreadable_event_count > 0:
         payload["unreadable_event_count"] = unreadable_event_count
+        # The count says how many events broke; the reasons say why, so the
+        # read-back can tell an operator which artifact to repair.
+        reasons = raw.get("unreadable_event_reasons")
+        if isinstance(reasons, list):
+            validated = sorted({str(reason) for reason in reasons if str(reason)})
+            if validated:
+                payload["unreadable_event_reasons"] = validated
     return payload
 
 
@@ -500,6 +508,9 @@ def quota_status(
             "be read back; the remaining quota is unknown and cannot be spent"
         )
         payload["blocked_action_scope"] = "automatic_agent_turns"
+        reasons = payload.get("unreadable_event_reasons")
+        if isinstance(reasons, list) and reasons:
+            payload["unreadable_event_reasons"] = list(reasons)
     elif waiting_on in {"user_or_controller", "controller"}:
         state = "operator_gate"
         reason = (
@@ -641,6 +652,33 @@ def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
     return projection_todo_summary_claim_scope_agent_id(summary)
 
 
+def _unreadable_event_reasons(
+    quota: dict[str, Any],
+    ledger_quota: dict[str, Any] | None,
+) -> list[str]:
+    """Collect the validated reasons of the unreadable quota events.
+
+    The projection that read the ledger owns the reasons; a projection that
+    was built before the artifact broke may only have the count, so the ledger
+    payload is the fallback. The result is validated against the known reason
+    vocabulary so an unreadable reason cannot become free-form text in the
+    public projection.
+    """
+
+    reasons: set[str] = set()
+    for source in (quota, ledger_quota):
+        if not isinstance(source, dict):
+            continue
+        raw = source.get("unreadable_event_reasons")
+        if not isinstance(raw, list):
+            continue
+        for reason in raw:
+            text = str(reason or "").strip()
+            if text in QUOTA_EVENT_UNREADABLE_REASONS:
+                reasons.add(text)
+    return sorted(reasons)
+
+
 def _apply_unreadable_ledger_fail_closed(
     quota: dict[str, Any],
     *,
@@ -661,8 +699,16 @@ def _apply_unreadable_ledger_fail_closed(
         )
     if unreadable_event_count <= 0:
         return quota
+    reasons = _unreadable_event_reasons(quota, ledger_quota)
     if str(quota.get("state") or "") == "blocked_health":
-        return quota
+        # The Goal is already blocked, but the reasons still have to reach the
+        # public projection: the count alone cannot say what to repair.
+        if not reasons:
+            return quota
+        blocked = dict(quota)
+        blocked["unreadable_event_count"] = unreadable_event_count
+        blocked["unreadable_event_reasons"] = reasons
+        return blocked
     blocked = dict(quota)
     blocked["state"] = "blocked_health"
     blocked["reason"] = (
@@ -671,13 +717,8 @@ def _apply_unreadable_ledger_fail_closed(
     )
     blocked["blocked_action_scope"] = "automatic_agent_turns"
     blocked["unreadable_event_count"] = unreadable_event_count
-    reasons = (
-        ledger_quota.get("unreadable_event_reasons")
-        if isinstance(ledger_quota, dict)
-        else None
-    )
-    if isinstance(reasons, list) and reasons:
-        blocked["unreadable_event_reasons"] = list(reasons)
+    if reasons:
+        blocked["unreadable_event_reasons"] = reasons
     return blocked
 
 

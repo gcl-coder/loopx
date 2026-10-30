@@ -21,12 +21,17 @@ from loopx.control_plane.quota.ledger_readback import (
     QUOTA_EVENT_UNREADABLE_ARTIFACT_MISSING,
     QUOTA_EVENT_UNREADABLE_ARTIFACT_NOT_OBJECT,
     QUOTA_EVENT_UNREADABLE_ARTIFACT_UNREADABLE,
+    QUOTA_EVENT_UNREADABLE_EVENT_INVALID,
     QUOTA_EVENT_UNREADABLE_EVENT_MISSING,
     QUOTA_EVENT_UNREADABLE_MISSING_SOURCE,
     quota_slot_observation,
 )
 from loopx.control_plane.quota.usage_summary import build_usage_summary
-from loopx.quota import goal_quota_with_spend_ledger, quota_status
+from loopx.quota import (
+    goal_quota_config,
+    goal_quota_with_spend_ledger,
+    quota_status,
+)
 
 
 GOAL_ID = "quota-ledger-integrity"
@@ -274,6 +279,106 @@ def test_observation_distinguishes_an_unreadable_event_from_a_zero_spend_event(
     contribution, reason = quota_slot_observation(zero)
     assert contribution is None
     assert reason is None
+
+
+def test_a_malformed_quota_event_is_reported_instead_of_counted_as_no_spend() -> None:
+    """A readable object that names no known event type is still unreadable.
+
+    The index row claims a spend, so reading the event as "this event spends
+    nothing" would hand the Goal back the quota it already used.
+    """
+
+    malformed = {
+        "generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+        "goal_id": GOAL_ID,
+        "classification": "quota_slot_spent",
+        "quota_event": {"slots": 1},
+    }
+
+    contribution, reason = quota_slot_observation(malformed)
+    assert contribution is None
+    assert reason == QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+
+    ledger = goal_quota_with_spend_ledger(_goal(), [malformed], now=NOW)
+    assert ledger["spent_slots"] == 0
+    assert ledger["unreadable_event_count"] == 1
+    assert ledger["unreadable_event_reasons"] == [QUOTA_EVENT_UNREADABLE_EVENT_INVALID]
+
+    status = quota_status(
+        {**_goal(), "quota": {**_goal()["quota"], **ledger}},
+        waiting_on="codex",
+    )
+    assert status["state"] == "blocked_health"
+    assert status["blocked_action_scope"] == "automatic_agent_turns"
+
+
+def test_an_unknown_event_type_is_reported_instead_of_counted_as_no_spend() -> None:
+    unknown = {
+        "generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+        "goal_id": GOAL_ID,
+        "classification": "quota_slot_spent",
+        "quota_event": {"event_type": "quota_slot_something_else", "slots": 1},
+    }
+
+    contribution, reason = quota_slot_observation(unknown)
+    assert contribution is None
+    assert reason == QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+
+    ledger = goal_quota_with_spend_ledger(_goal(), [unknown], now=NOW)
+    assert ledger["unreadable_event_count"] == 1
+
+
+def test_a_legal_zero_spend_event_is_not_reported_as_unreadable() -> None:
+    zero = {
+        "generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+        "goal_id": GOAL_ID,
+        "classification": "quota_slot_spent",
+        "quota_event": {"event_type": "quota_slot_spent", "slots": 0},
+    }
+
+    contribution, reason = quota_slot_observation(zero)
+    assert contribution is None
+    assert reason is None
+
+    ledger = goal_quota_with_spend_ledger(_goal(), [zero], now=NOW)
+    assert ledger.get("unreadable_event_count", 0) == 0
+
+
+def test_the_public_projection_keeps_the_unreadable_reason(tmp_path: Path) -> None:
+    """The count says how many events broke; the reason says what to repair."""
+
+    artifact = tmp_path / "runs" / "truncated.json"
+    _write_artifact(artifact, None)
+    rows = [_spend_row(artifact, generated_at=NOW - timedelta(minutes=10))]
+    ledger = _ledger(tmp_path, rows)
+
+    config = goal_quota_config({**_goal(), "quota": {**_goal()["quota"], **ledger}})
+    assert config["unreadable_event_count"] == 1
+    assert config["unreadable_event_reasons"] == [QUOTA_EVENT_UNREADABLE_ARTIFACT_INVALID_JSON]
+
+    status = quota_status(
+        {**_goal(), "quota": {**_goal()["quota"], **ledger}},
+        waiting_on="codex",
+    )
+    assert status["state"] == "blocked_health"
+    assert status["unreadable_event_reasons"] == [QUOTA_EVENT_UNREADABLE_ARTIFACT_INVALID_JSON]
+
+
+def test_the_plan_keeps_the_unreadable_reason(tmp_path: Path) -> None:
+    from loopx.quota import build_quota_plan
+
+    artifact = tmp_path / "runs" / "missing.json"
+    rows = [_spend_row(artifact, generated_at=NOW - timedelta(minutes=10))]
+    ledger = _ledger(tmp_path, rows)
+    payload = _plan_payload({**(_goal()["quota"]), **ledger})
+
+    plan = build_quota_plan(payload, mode="plan")
+
+    item = plan["groups"]["blocked_health"][0]
+    assert item["quota"]["unreadable_event_count"] == 1
+    assert item["quota"]["unreadable_event_reasons"] == [
+        QUOTA_EVENT_UNREADABLE_ARTIFACT_MISSING
+    ]
 
 
 def test_an_unreadable_void_is_also_reported(tmp_path: Path) -> None:
