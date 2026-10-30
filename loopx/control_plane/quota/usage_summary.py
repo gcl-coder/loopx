@@ -66,8 +66,6 @@ def blank_usage_goal(goal_id: str) -> dict[str, Any]:
         "runs_7d": 0,
         "quota_spend_slots_24h": 0,
         "quota_spend_slots_7d": 0,
-        "unreadable_event_count_24h": 0,
-        "unreadable_event_count_7d": 0,
         "automation_run_count_24h": 0,
         "automation_run_count_7d": 0,
         "progress_signal_run_count_24h": 0,
@@ -153,8 +151,6 @@ def build_usage_summary(
         "runs_7d": 0,
         "quota_spend_slots_24h": 0,
         "quota_spend_slots_7d": 0,
-        "unreadable_event_count_24h": 0,
-        "unreadable_event_count_7d": 0,
         "automation_run_count_24h": 0,
         "automation_run_count_7d": 0,
         "progress_signal_run_count_24h": 0,
@@ -200,8 +196,8 @@ def build_usage_summary(
                 # The summary must not report a spend it cannot read back as a
                 # zero-spend run; the integrity failure is reported next to
                 # the slots that were readable.
-                totals["unreadable_event_count_7d"] += 1
-                goal["unreadable_event_count_7d"] += 1
+                totals["unreadable_event_count_7d"] = totals.get("unreadable_event_count_7d", 0) + 1
+                goal["unreadable_event_count_7d"] = goal.get("unreadable_event_count_7d", 0) + 1
             elif slot_contribution is not None:
                 kind, run_key, slots = slot_contribution
                 slot_contributions_7d.append(((goal_id, run_key), kind, slots))
@@ -218,8 +214,8 @@ def build_usage_summary(
             totals["runs_24h"] += 1
             goal["runs_24h"] += 1
             if unreadable_reason is not None:
-                totals["unreadable_event_count_24h"] += 1
-                goal["unreadable_event_count_24h"] += 1
+                totals["unreadable_event_count_24h"] = totals.get("unreadable_event_count_24h", 0) + 1
+                goal["unreadable_event_count_24h"] = goal.get("unreadable_event_count_24h", 0) + 1
             elif slot_contribution is not None:
                 kind, run_key, slots = slot_contribution
                 slot_contributions_24h.append(((goal_id, run_key), kind, slots))
