@@ -2529,8 +2529,10 @@ The summary currently reports:
 - `unreadable_event_count_24h` / `unreadable_event_count_7d`: optional; omitted
   when no unreadable event was observed. When present, they count indexed quota
   events (`quota_slot_spent` / `quota_slot_voided`) in that sample whose
-  artifact cannot be read back. The real slot count is unknown, so these
-  events are counted instead of being silently read as a zero spend, and the
+  artifact cannot be read back, or whose slot count is missing or unparseable.
+  The real slot count is unknown, so these events are counted instead of being
+  silently read as a zero spend (an explicitly written `slots: 0` stays a legal
+  zero, not an unreadable event), and the
   quota projection fails closed while the count is non-zero. The counters only
   appear when they describe a real integrity failure, so a healthy summary
   keeps its original shape and the agent-facing status output stays inside its

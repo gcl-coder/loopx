@@ -514,3 +514,196 @@ def test_a_stale_eligible_projection_cannot_hide_an_unreadable_ledger_event(
     item = plan["groups"]["blocked_health"][0]
     assert item["quota"]["unreadable_event_count"] == 1
     assert plan["summary"]["next_automatic_turn"] is None
+
+
+def _slot_artifact(
+    path: Path,
+    *,
+    generated_at: datetime | None = None,
+    event: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Write a physical quota artifact and return its index row.
+
+    The index row is identical across the cases below; only the artifact on
+    disk changes, which is the shape a real repair takes.
+    """
+
+    generated_at = generated_at or (NOW - timedelta(minutes=10))
+    if event is None:
+        event = _spend_event(generated_at)
+    _write_artifact(path, event)
+    return _spend_row(path, generated_at=generated_at)
+
+
+def test_a_spend_artifact_with_an_unreadable_slot_count_is_not_a_zero_spend(
+    tmp_path: Path,
+) -> None:
+    """An unknown quantity is not an explicit zero.
+
+    The index row still claims a spend; only the artifact lost its size. That
+    must be reported as an unreadable event rather than folded into a zero
+    spend, which would hand the Goal back the quota it already used.
+    """
+
+    readable = {
+        "event_type": "quota_slot_spent",
+        "run_generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+    }
+    broken_counts: list[Any] = ["lost", "", True, ["1"], {"value": 1}]
+
+    for broken in broken_counts:
+        artifact = tmp_path / f"runs-{abs(hash(str(broken)))}.json"
+        row = _slot_artifact(artifact, event={**readable, "slots": broken})
+
+        observation, reason = quota_slot_observation(row)
+        assert observation is None
+        assert reason == QUOTA_EVENT_UNREADABLE_EVENT_INVALID, broken
+
+        ledger = _ledger(tmp_path, [row])
+        assert ledger["spent_slots"] == 0
+        assert ledger["unreadable_event_count"] == 1
+        assert ledger["unreadable_event_reasons"] == [
+            QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+        ]
+
+    # The field is gone entirely, not just unparseable.
+    missing = tmp_path / "runs-missing-slots.json"
+    row = _slot_artifact(missing, event=dict(readable))
+    observation, reason = quota_slot_observation(row)
+    assert observation is None
+    assert reason == QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+
+
+def test_an_unreadable_slot_count_keeps_the_goal_out_of_the_plan(
+    tmp_path: Path,
+) -> None:
+    """The should-run guard must not offer a Goal whose spend size is unknown."""
+
+    from loopx.quota import build_quota_plan
+
+    artifact = tmp_path / "runs" / "slots-lost.json"
+    row = _slot_artifact(
+        artifact,
+        event={
+            "event_type": "quota_slot_spent",
+            "run_generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+            "slots": "lost",
+        },
+    )
+    ledger = _ledger(tmp_path, [row])
+    payload = _plan_payload({**_goal()["quota"], **ledger})
+
+    plan = build_quota_plan(payload, mode="plan")
+
+    assert plan["groups"]["blocked_health"], plan["groups"]
+    item = plan["groups"]["blocked_health"][0]
+    assert item["goal_id"] == GOAL_ID
+    assert item["quota"]["unreadable_event_count"] == 1
+    assert item["quota"]["unreadable_event_reasons"] == [
+        QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+    ]
+    assert plan["summary"]["next_automatic_turn"] is None
+
+
+def test_a_void_artifact_with_an_unreadable_slot_count_is_not_a_zero_void(
+    tmp_path: Path,
+) -> None:
+    """A void of an unknown size cannot be read as cancelling nothing."""
+
+    for slots_marker in ("missing", "lost"):
+        artifact = tmp_path / f"runs-void-{slots_marker}.json"
+        event: dict[str, Any] = {
+            "event_type": "quota_slot_voided",
+            "voided_run_generated_at": (NOW - timedelta(minutes=20)).isoformat(),
+        }
+        if slots_marker != "missing":
+            event["slots"] = slots_marker
+        _write_artifact(artifact, event)
+        row = {
+            "generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+            "goal_id": GOAL_ID,
+            "classification": "quota_slot_voided",
+            "json_path": str(artifact),
+        }
+
+        observation, reason = quota_slot_observation(row)
+        assert observation is None
+        assert reason == QUOTA_EVENT_UNREADABLE_EVENT_INVALID, slots_marker
+
+
+def test_an_explicit_zero_slot_count_stays_a_legal_zero(tmp_path: Path) -> None:
+    """A written zero is readable, and stays a zero contribution."""
+
+    artifact = tmp_path / "runs" / "zero.json"
+    zero = {
+        "event_type": "quota_slot_spent",
+        "run_generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+        "slots": 0,
+    }
+    row = _slot_artifact(artifact, event=zero)
+
+    observation, reason = quota_slot_observation(row)
+    assert observation is None
+    assert reason is None
+
+    ledger = _ledger(tmp_path, [row])
+    assert ledger["spent_slots"] == 0
+    assert "unreadable_event_count" not in ledger
+    status = quota_status(
+        {**_goal(), "quota": {**_goal()["quota"], **ledger}},
+        waiting_on="codex",
+    )
+    assert status["state"] == "eligible"
+
+
+def test_a_numeric_string_slot_count_is_still_readable(tmp_path: Path) -> None:
+    """The supported historical representation keeps working."""
+
+    artifact = tmp_path / "runs" / "string-slots.json"
+    event = {
+        "event_type": "quota_slot_spent",
+        "run_generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+        "slots": "3",
+    }
+    row = _slot_artifact(artifact, event=event)
+
+    observation, reason = quota_slot_observation(row)
+    assert reason is None
+    assert observation == ("spent", event["run_generated_at"], 3)
+
+    ledger = _ledger(tmp_path, [row])
+    assert ledger["spent_slots"] == 3
+    assert "unreadable_event_count" not in ledger
+
+
+def test_restoring_the_slot_count_releases_the_goal_again(tmp_path: Path) -> None:
+    """Repairing the artifact is the whole recovery: the index row never moves."""
+
+    artifact = tmp_path / "runs" / "spend.json"
+    row = _slot_artifact(
+        artifact,
+        event={
+            "event_type": "quota_slot_spent",
+            "run_generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+            "slots": "lost",
+        },
+    )
+
+    broken = _ledger(tmp_path, [row])
+    assert broken["unreadable_event_count"] == 1
+    broken_status = quota_status(
+        {**_goal(), "quota": {**_goal()["quota"], **broken}},
+        waiting_on="codex",
+    )
+    assert broken_status["state"] == "blocked_health"
+
+    _write_artifact(artifact, _spend_event(NOW - timedelta(minutes=10), slots=4))
+    repaired = _ledger(tmp_path, [row])
+
+    assert "unreadable_event_count" not in repaired
+    assert repaired["spent_slots"] == 4
+    repaired_status = quota_status(
+        {**_goal(), "quota": {**_goal()["quota"], **repaired}},
+        waiting_on="codex",
+    )
+    assert repaired_status["state"] == "eligible"

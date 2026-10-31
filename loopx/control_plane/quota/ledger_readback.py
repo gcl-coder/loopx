@@ -8,6 +8,7 @@ objects; transaction and admission authority stays with its typed owners.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,35 @@ def _int_number(value: Any, *, default: int) -> int:
         except (ValueError, OverflowError):
             return default
     return default
+
+
+def _slot_count(value: Any) -> int | None:
+    """Read one quota event's slot count, or ``None`` when it is unknown.
+
+    A missing or unparseable count means the remaining budget is unknown, which
+    the ledger must not fold into "this event spends nothing". Integers, finite
+    floats and numeric strings are the supported representations; booleans and
+    unmapped shapes are not counts. A readable negative count clamps to zero,
+    preserving the existing contribution semantics.
+    """
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        return max(0, int(value))
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return max(0, int(float(text)))
+        except (ValueError, OverflowError):
+            return None
+    return None
 
 
 def _read_quota_event_artifact(raw_json_path: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -170,20 +200,27 @@ def quota_slot_observation(
         run_key = str(event.get("run_generated_at") or run.get("generated_at") or "")
         if not run_key:
             return None, QUOTA_EVENT_UNREADABLE_EVENT_INVALID
-        slots = max(0, _int_number(event.get("slots"), default=0))
-        if slots <= 0:
-            # A readable spend event that spends no slot is a legal zero
-            # contribution, not an unreadable one.
+        slots = _slot_count(event.get("slots"))
+        if slots is None:
+            # The event names a spend but not how much it spent. That is an
+            # unknown quantity, not a zero spend: guessing zero would hand the
+            # Goal back the quota it already used.
+            return None, QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+        if slots == 0:
+            # An explicit, readable zero is a legal zero contribution.
             return None, None
         return ("spent", run_key, slots), None
     if event_type == QUOTA_SLOT_VOIDED_CLASSIFICATION:
         voided_run_generated_at = str(event.get("voided_run_generated_at") or "")
         if not voided_run_generated_at:
             return None, QUOTA_EVENT_UNREADABLE_EVENT_INVALID
-        slots = max(0, _int_number(event.get("slots"), default=0))
-        if slots <= 0:
-            # A readable void event that cancels no slot is a legal zero
-            # contribution, not an unreadable one.
+        slots = _slot_count(event.get("slots"))
+        if slots is None:
+            # Same rule as a spend: an unknown cancelled quantity cannot be
+            # read as "this void cancels nothing".
+            return None, QUOTA_EVENT_UNREADABLE_EVENT_INVALID
+        if slots == 0:
+            # An explicit, readable zero is a legal zero contribution.
             return None, None
         return ("voided", voided_run_generated_at, slots), None
     # The index row claims a quota event, but the event does not name a type
